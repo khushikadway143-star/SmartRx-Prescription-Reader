@@ -1,4 +1,3 @@
-@"
 # SmartRx: Real-Time Prescription Reader & Reminder System
 
 An end-to-end handwriting OCR and medication adherence web application built with **React**, **FastAPI**, and a custom **CRNN + BiLSTM + CTC** deep learning model exported to **ONNX**.
