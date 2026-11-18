@@ -25,3 +25,10 @@ uvicorn app:app --reload --port 8000
 cd smartrx/web
 npm install
 npm run dev
+
+### Login Page
+<img width="867" height="427" alt="image" src="https://github.com/user-attachments/assets/b069a70b-646b-4738-9d8d-651a2bdaff80" />
+
+### Home Page
+<img width="1920" height="1020" alt="image" src="https://github.com/user-attachments/assets/dbc67175-c152-4cc4-a60c-54c7b460a8b4" />
+
