@@ -12,7 +12,7 @@ IMG_H, IMG_W = 32, 128  # every word crop is resized to this
 BLANK = 0               # CTC blank index; charset[i] is class i + 1
 
 
-# ---------------------------------------------------------------- pre-processing
+#pre-processing
 def to_gray(img: np.ndarray) -> np.ndarray:
     if img.ndim == 3:
         return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY if img.shape[2] == 3 else cv2.COLOR_BGRA2GRAY)
@@ -40,7 +40,7 @@ def preprocess_word(img: np.ndarray, use_otsu: bool = True) -> np.ndarray:
     return (canvas.astype(np.float32) / 255.0)[None]
 
 
-# ---------------------------------------------------------------- word segmentation
+#word segmentation
 def _runs(flags: np.ndarray, min_gap: int):
     """Runs of True in a 1-D bool array; runs separated by fewer than `min_gap` False values are merged."""
     runs, start, gap = [], None, 0
@@ -120,7 +120,7 @@ def crop(binary: np.ndarray, box, pad: int = 3) -> np.ndarray:
     return binary[max(0, y - pad): min(H, y + h + pad), max(0, x - pad): min(W, x + w + pad)]
 
 
-# ---------------------------------------------------------------- CTC decoding + metrics
+#CTC decoding + metrics
 def ctc_greedy(probs: np.ndarray, charset: list):
     """probs: (T, C) softmax output. Returns (text, confidence). Best-path decoding: collapse repeats, drop blanks."""
     best = probs.argmax(axis=1)
@@ -153,7 +153,7 @@ def word_accuracy(preds, truths) -> float:
     return float(np.mean([p == t for p, t in zip(preds, truths)])) if truths else 0.0
 
 
-# ---------------------------------------------------------------- ONNX inference
+#ONNX inference
 class OnnxRecognizer:
     def __init__(self, model_path: str, charset_path: str):
         import onnxruntime as ort
