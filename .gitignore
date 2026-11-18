@@ -1,0 +1,10 @@
+*.pdf
+*.docx
+*.onnx
+*.pt
+*.db
+*.zip
+node_modules/
+.venv/
+__pycache__/
+.env

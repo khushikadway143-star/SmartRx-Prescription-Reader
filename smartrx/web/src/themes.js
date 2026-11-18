@@ -1,0 +1,32 @@
+export const THEMES = {
+  night: {
+    name: "Night Mode",
+    bg: "#0b1120",
+    card: "#111827",
+    subCard: "#1e293b",
+    text: "#f8fafc",
+    muted: "#94a3b8",
+    border: "#334155",
+    accent: "#3b82f6",
+  },
+  day: {
+    name: "Day Mode",
+    bg: "#f1f5f9",
+    card: "#ffffff",
+    subCard: "#e2e8f0",
+    text: "#0f172a",
+    muted: "#475569",
+    border: "#cbd5e1",
+    accent: "#2563eb",
+  },
+  dimYellow: {
+    name: "Dim Yellow Light",
+    bg: "#231f14",
+    card: "#2e2819",
+    subCard: "#3d3521",
+    text: "#fef3c7",
+    muted: "#d6c596",
+    border: "#574b2c",
+    accent: "#d97706",
+  },
+};

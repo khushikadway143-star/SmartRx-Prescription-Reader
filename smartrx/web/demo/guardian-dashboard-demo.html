@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SmartRx Guardian Dashboard (demo)</title>
+<style>html,body{margin:0}</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script>
+"use strict";
+/**
+ * WebDashboard.jsx: Guardian Companion Dashboard for SmartRx Assist.
+ *
+ * Usage (Next.js client component or Vite):
+ *   <WebDashboard wsUrl="wss://api.example.com/v1/guardian-link" getToken={() => session.token} patientName="Asha" />
+ * Without wsUrl it runs in demo mode with simulated events so you can see every state.
+ *
+ * Server -> dashboard messages (JSON):
+ *   { type: 'snapshot', doses: Dose[], week: number[], devices: Device[] }
+ *   { type: 'dose_taken' | 'dose_missed', doseId, at }
+ *   { type: 'sos', at, lat?, lng? }
+ *   { type: 'device_status', deviceId, batteryPct, at }
+ *   { type: 'heartbeat', at }
+ * Dose = { id, drug, time (ISO), status: 'pending'|'taken'|'missed' }
+ */
+const { useCallback, useEffect, useMemo, useReducer, useRef, useState } = React;
+/* ---------------- state ---------------- */
+const today = (h, m = 0) => {
+    const d = new Date();
+    d.setHours(h, m, 0, 0);
+    return d.toISOString();
+};
+const DEMO = {
+    doses: [
+        { id: 'd1', drug: 'Metformin 500 mg', time: today(8), status: 'taken' },
+        { id: 'd2', drug: 'Amlodipine 5 mg', time: today(9), status: 'taken' },
+        { id: 'd3', drug: 'Metformin 500 mg', time: today(14), status: 'missed' },
+        { id: 'd4', drug: 'Atorvastatin 10 mg', time: today(21), status: 'pending' },
+    ],
+    week: [100, 100, 75, 100, 50, 100, 75],
+    devices: [
+        { id: 'pillbox', name: 'Smart pillbox', batteryPct: 82, at: new Date().toISOString() },
+        { id: 'watch', name: 'Smartwatch', batteryPct: 18, at: new Date().toISOString() },
+    ],
+};
+const initial = { doses: [], week: [], devices: [], alerts: [], lastSeen: null, connection: 'connecting' };
+function reducer(s, e) {
+    var _a, _b, _c, _d;
+    switch (e.type) {
+        case 'connection':
+            return { ...s, connection: e.value };
+        case 'snapshot':
+            return { ...s, doses: (_a = e.doses) !== null && _a !== void 0 ? _a : [], week: (_b = e.week) !== null && _b !== void 0 ? _b : [], devices: (_c = e.devices) !== null && _c !== void 0 ? _c : [], lastSeen: new Date().toISOString() };
+        case 'dose_taken':
+        case 'dose_missed': {
+            const status = e.type === 'dose_taken' ? 'taken' : 'missed';
+            const dose = s.doses.find((d) => d.id === e.doseId);
+            return {
+                ...s,
+                lastSeen: e.at,
+                doses: s.doses.map((d) => (d.id === e.doseId ? { ...d, status } : d)),
+                alerts: status === 'missed' ? [{ id: `${e.doseId}-m`, kind: 'missed', at: e.at, text: `Missed dose: ${(_d = dose === null || dose === void 0 ? void 0 : dose.drug) !== null && _d !== void 0 ? _d : 'unknown medicine'}` }, ...s.alerts] : s.alerts,
+            };
+        }
+        case 'sos':
+            return { ...s, lastSeen: e.at, alerts: [{ id: `sos-${e.at}`, kind: 'sos', at: e.at, text: 'SOS pressed', lat: e.lat, lng: e.lng }, ...s.alerts] };
+        case 'device_status':
+            return { ...s, devices: s.devices.map((d) => (d.id === e.deviceId ? { ...d, batteryPct: e.batteryPct, at: e.at } : d)) };
+        case 'heartbeat':
+            return { ...s, lastSeen: e.at };
+        case 'dismiss':
+            return { ...s, alerts: s.alerts.filter((a) => a.id !== e.id) };
+        default:
+            return s;
+    }
+}
+/* ---------------- hook ---------------- */
+function useGuardianFeed({ wsUrl, getToken }) {
+    const [state, dispatch] = useReducer(reducer, initial);
+    const retry = useRef(0);
+    useEffect(() => {
+        if (!wsUrl) {
+            // Demo mode
+            dispatch({ type: 'connection', value: 'demo' });
+            dispatch({ type: 'snapshot', ...DEMO });
+            const t = setTimeout(() => dispatch({ type: 'dose_missed', doseId: 'd3', at: new Date().toISOString() }), 2500);
+            return () => clearTimeout(t);
+        }
+        let ws;
+        let stop = false;
+        let timer;
+        const open = async () => {
+            const token = await (getToken === null || getToken === void 0 ? void 0 : getToken());
+            ws = new WebSocket(`${wsUrl}?role=guardian&token=${encodeURIComponent(token !== null && token !== void 0 ? token : '')}`);
+            ws.onopen = () => {
+                retry.current = 0;
+                dispatch({ type: 'connection', value: 'live' });
+            };
+            ws.onmessage = (m) => {
+                try {
+                    dispatch(JSON.parse(m.data));
+                }
+                catch {
+                    /* ignore malformed frame */
+                }
+            };
+            ws.onclose = () => {
+                dispatch({ type: 'connection', value: 'reconnecting' });
+                if (!stop)
+                    timer = setTimeout(open, Math.min(30000, 1000 * 2 ** retry.current++));
+            };
+            ws.onerror = () => ws.close();
+        };
+        open();
+        return () => {
+            stop = true;
+            clearTimeout(timer);
+            ws === null || ws === void 0 ? void 0 : ws.close();
+        };
+    }, [wsUrl, getToken]);
+    return [state, dispatch];
+}
+/* ---------------- helpers ---------------- */
+const fmtTime = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const STATUS = { taken: 'Taken', missed: 'Missed', pending: 'Upcoming' };
+function useNow(ms = 30000) {
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        const t = setInterval(() => setNow(Date.now()), ms);
+        return () => clearInterval(t);
+    }, [ms]);
+    return now;
+}
+/* ---------------- component ---------------- */
+function WebDashboard({ wsUrl, getToken, patientName = 'Your patient', patientPhone }) {
+    const [s, dispatch] = useGuardianFeed({ wsUrl, getToken });
+    const now = useNow();
+    const alertRef = useRef(null);
+    const taken = s.doses.filter((d) => d.status === 'taken').length;
+    const missed = s.doses.filter((d) => d.status === 'missed').length;
+    const total = s.doses.length || 1;
+    const next = useMemo(() => s.doses.filter((d) => d.status === 'pending').sort((a, b) => new Date(a.time) - new Date(b.time))[0], [s.doses]);
+    const minutesSince = s.lastSeen ? Math.round((now - new Date(s.lastSeen)) / 60000) : null;
+    const sos = s.alerts.find((a) => a.kind === 'sos');
+    // Audible cue for new alerts (guardians may not be looking at the screen).
+    const prevCount = useRef(0);
+    useEffect(() => {
+        var _a;
+        if (s.alerts.length > prevCount.current) {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const o = ctx.createOscillator();
+                o.frequency.value = 880;
+                o.connect(ctx.destination);
+                o.start();
+                o.stop(ctx.currentTime + 0.25);
+            }
+            catch {
+                /* autoplay blocked */
+            }
+            (_a = navigator.vibrate) === null || _a === void 0 ? void 0 : _a.call(navigator, [100, 50, 100, 50, 100]);
+            if ('Notification' in window && Notification.permission === 'granted')
+                new Notification('SmartRx alert', { body: s.alerts[0].text });
+        }
+        prevCount.current = s.alerts.length;
+    }, [s.alerts]);
+    const callPatient = useCallback(() => patientPhone && (window.location.href = `tel:${patientPhone}`), [patientPhone]);
+    return (React.createElement("div", { className: "rx" },
+        React.createElement("style", null, CSS),
+        React.createElement("header", { className: "rx-head" },
+            React.createElement("div", null,
+                React.createElement("h1", null, patientName),
+                React.createElement("p", { className: "rx-sub", "aria-live": "polite" },
+                    s.connection === 'live' && 'Live',
+                    s.connection === 'demo' && 'Demo data',
+                    s.connection === 'connecting' && 'Connecting…',
+                    s.connection === 'reconnecting' && 'Connection lost. Reconnecting…',
+                    minutesSince !== null && ` · last heard from phone ${minutesSince < 1 ? 'just now' : `${minutesSince} min ago`}`)),
+            React.createElement("div", { className: "rx-actions" },
+                typeof Notification !== 'undefined' && Notification.permission === 'default' && (React.createElement("button", { className: "rx-btn ghost", onClick: () => Notification.requestPermission() }, "Enable desktop alerts")),
+                React.createElement("button", { className: "rx-btn", onClick: callPatient, disabled: !patientPhone },
+                    "Call ",
+                    patientName))),
+        React.createElement("div", { role: "alert", "aria-live": "assertive", ref: alertRef, className: "rx-alerts" }, s.alerts.map((a) => (React.createElement("div", { key: a.id, className: `rx-alert ${a.kind}` },
+            React.createElement("div", null,
+                React.createElement("strong", null, a.text),
+                React.createElement("span", null,
+                    " at ",
+                    fmtTime(a.at)),
+                a.lat != null && (React.createElement(React.Fragment, null,
+                    ' ',
+                    React.createElement("a", { href: `https://maps.google.com/?q=${a.lat},${a.lng}`, target: "_blank", rel: "noreferrer" }, "Open location")))),
+            React.createElement("button", { className: "rx-btn ghost", onClick: () => dispatch({ type: 'dismiss', id: a.id }) }, "Dismiss"))))),
+        React.createElement("main", { className: "rx-grid" },
+            React.createElement("section", { className: "rx-panel rx-now", "aria-labelledby": "now-h" },
+                React.createElement("h2", { id: "now-h" }, sos ? 'Needs help now' : missed ? 'A dose was missed' : next ? 'On track' : 'All done for today'),
+                React.createElement("p", { className: "rx-big" }, next ? (React.createElement(React.Fragment, null,
+                    "Next: ",
+                    next.drug,
+                    " at ",
+                    fmtTime(next.time))) : ('No more doses today')),
+                React.createElement("p", { className: "rx-sub" },
+                    taken,
+                    " of ",
+                    total,
+                    " taken today",
+                    missed ? `, ${missed} missed` : '')),
+            React.createElement("section", { className: "rx-panel", "aria-labelledby": "sched-h" },
+                React.createElement("h2", { id: "sched-h" }, "Today"),
+                React.createElement("ol", { className: "rx-line" },
+                    [...s.doses]
+                        .sort((a, b) => new Date(a.time) - new Date(b.time))
+                        .map((d) => (React.createElement("li", { key: d.id, className: d.status },
+                        React.createElement("span", { className: "rx-time" }, fmtTime(d.time)),
+                        React.createElement("span", { className: "rx-drug" }, d.drug),
+                        React.createElement("span", { className: `rx-chip ${d.status}` }, STATUS[d.status])))),
+                    !s.doses.length && React.createElement("li", { className: "rx-sub" }, "No doses scheduled yet."))),
+            React.createElement("section", { className: "rx-panel", "aria-labelledby": "week-h" },
+                React.createElement("h2", { id: "week-h" }, "Last 7 days"),
+                React.createElement("div", { className: "rx-bars", role: "img", "aria-label": `Adherence by day: ${s.week.map((v, i) => `${DAYS[i]} ${v} percent`).join(', ')}` }, s.week.map((v, i) => (React.createElement("div", { key: i, className: "rx-bar" },
+                    React.createElement("div", { className: "rx-fill", style: { height: `${v}%` }, "data-low": v < 80 }),
+                    React.createElement("span", null, DAYS[i]),
+                    React.createElement("span", { className: "rx-pct" },
+                        v,
+                        "%")))))),
+            React.createElement("section", { className: "rx-panel", "aria-labelledby": "dev-h" },
+                React.createElement("h2", { id: "dev-h" }, "Connected devices"),
+                React.createElement("ul", { className: "rx-dev" },
+                    s.devices.map((d) => (React.createElement("li", { key: d.id },
+                        React.createElement("span", null, d.name),
+                        React.createElement("span", { className: d.batteryPct < 20 ? 'low' : '' },
+                            "Battery ",
+                            d.batteryPct,
+                            "%",
+                            d.batteryPct < 20 ? ' (low)' : '')))),
+                    !s.devices.length && React.createElement("li", { className: "rx-sub" }, "No devices paired."))))));
+}
+/* ---------------- styles ---------------- */
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap');
+.rx{
+  --bg:#EEF2F6; --panel:#FFFFFF; --ink:#0A1A2F; --muted:#3B4D63; --line:#C7D1DD;
+  --accent:#0B57D0; --on-accent:#FFFFFF; --ok:#14663A; --ok-bg:#DDF3E5; --bad:#A8201A; --bad-bg:#FCE0DD; --wait:#27415F; --wait-bg:#E1E9F3;
+  font-family:'Atkinson Hyperlegible',system-ui,sans-serif; color:var(--ink); background:var(--bg); min-height:100vh;
+  padding:max(16px,env(safe-area-inset-top)) 16px 32px; font-size:18px; line-height:1.5; box-sizing:border-box;
+}
+@media (prefers-color-scheme: dark){
+  .rx{--bg:#06101C; --panel:#0F1E30; --ink:#F4F7FB; --muted:#B5C3D6; --line:#2B3E55; --accent:#8AB4FF; --on-accent:#06101C;
+      --ok:#7BE0A0; --ok-bg:#12382450; --bad:#FF9A92; --bad-bg:#4A1613; --wait:#B5C9E4; --wait-bg:#1B2D44;}
+}
+.rx *{box-sizing:border-box}
+.rx h1{font-size:2rem;margin:0;font-weight:700}
+.rx h2{font-size:1.25rem;margin:0 0 .75rem;font-weight:700}
+.rx-sub{color:var(--muted);margin:.25rem 0 0}
+.rx-head{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:flex-end;max-width:1100px;margin:0 auto 16px}
+.rx-actions{display:flex;gap:8px;flex-wrap:wrap}
+.rx-btn{min-height:48px;padding:0 20px;border-radius:12px;border:2px solid var(--accent);background:var(--accent);color:var(--on-accent);font:inherit;font-weight:700;cursor:pointer}
+.rx-btn.ghost{background:transparent;color:var(--ink);border-color:var(--ink)}
+.rx-btn:disabled{opacity:.5;cursor:not-allowed}
+.rx a, .rx-btn:focus-visible, .rx a:focus-visible{outline-offset:3px}
+.rx-btn:focus-visible, .rx a:focus-visible{outline:3px solid var(--ink)}
+.rx a{color:var(--accent);font-weight:700}
+.rx-alerts{max-width:1100px;margin:0 auto 16px;display:grid;gap:8px}
+.rx-alert{display:flex;gap:12px;justify-content:space-between;align-items:center;padding:14px 16px;border-radius:12px;border:2px solid var(--bad);background:var(--bad-bg);color:var(--ink)}
+.rx-alert.sos{border-width:4px}
+.rx-grid{max-width:1100px;margin:0 auto;display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))}
+.rx-panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px}
+.rx-now{grid-column:1/-1;border-left:8px solid var(--accent)}
+.rx-big{font-size:1.75rem;font-weight:700;margin:0}
+.rx-line{list-style:none;margin:0;padding:0 0 0 14px;border-left:3px solid var(--line)}
+.rx-line li{display:grid;grid-template-columns:5.5rem 1fr auto;gap:12px;align-items:center;padding:10px 0;position:relative}
+.rx-line li::before{content:"";position:absolute;left:-22px;top:50%;width:11px;height:11px;border-radius:50%;background:var(--wait);transform:translateY(-50%);border:2px solid var(--panel)}
+.rx-line li.taken::before{background:var(--ok)} .rx-line li.missed::before{background:var(--bad)}
+.rx-time{font-weight:700;font-variant-numeric:tabular-nums}
+.rx-chip{padding:2px 12px;border-radius:999px;font-weight:700;font-size:.9rem;border:2px solid currentColor}
+.rx-chip.taken{color:var(--ok);background:var(--ok-bg)} .rx-chip.missed{color:var(--bad);background:var(--bad-bg)} .rx-chip.pending{color:var(--wait);background:var(--wait-bg)}
+.rx-bars{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;align-items:end;height:200px}
+.rx-bar{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:2px;font-size:.9rem}
+.rx-fill{width:100%;background:var(--accent);border-radius:6px 6px 0 0;min-height:4px}
+.rx-fill[data-low="true"]{background:var(--bad)}
+.rx-pct{color:var(--muted);font-variant-numeric:tabular-nums}
+.rx-dev{list-style:none;margin:0;padding:0}
+.rx-dev li{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line)}
+.rx-dev .low{color:var(--bad);font-weight:700}
+@media (max-width:520px){.rx-line li{grid-template-columns:4.5rem 1fr}.rx-chip{grid-column:2}}
+@media (prefers-reduced-motion: no-preference){.rx-alert{animation:rxin .25s ease-out}@keyframes rxin{from{opacity:0;transform:translateY(-4px)}}}
+`;
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(WebDashboard,{patientName:'Asha',patientPhone:'+910000000000'}));
+</script>
+</body>
+</html>

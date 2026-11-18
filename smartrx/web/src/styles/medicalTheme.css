@@ -1,0 +1,99 @@
+/* Global Reset & Larger Comfortable App Sizing */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Floating Medical Icons Animation */
+@keyframes floatSlow {
+  0% { transform: translateY(0px) rotate(0deg); opacity: 0.14; }
+  50% { transform: translateY(-22px) rotate(8deg); opacity: 0.24; }
+  100% { transform: translateY(0px) rotate(0deg); opacity: 0.14; }
+}
+
+@keyframes pulseHeart {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.med-bg-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.floating-icon {
+  position: absolute;
+  font-size: 3.2rem;
+  animation: floatSlow 7s ease-in-out infinite;
+  user-select: none;
+}
+
+.pulse-badge {
+  animation: pulseHeart 2.2s infinite ease-in-out;
+}
+
+.page-fade {
+  animation: fadeIn 0.35s ease-out;
+  position: relative;
+  z-index: 1;
+}
+
+/* Nice Card Hover & Shadow */
+.med-card {
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.med-input {
+  width: 100%;
+  padding: 13px 15px;
+  font-size: 1rem;
+  border-radius: 10px;
+  outline: none;
+  transition: border 0.2s;
+}
+
+.med-btn {
+  padding: 12px 18px;
+  font-size: 1rem;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.1s;
+}
+
+.med-btn:active {
+  transform: scale(0.98);
+}
+
+/* Flashing Reminder Animation */
+@keyframes flashBorder {
+  0%, 100% { border-color: #ef4444; box-shadow: 0 0 25px rgba(239, 68, 68, 0.5); }
+  50% { border-color: #facc15; box-shadow: 0 0 45px rgba(250, 204, 21, 0.85); }
+}
+
+.flash-alert-card {
+  animation: flashBorder 1.1s infinite ease-in-out;
+}
+
+/* Mobile-First Responsive Grid */
+.responsive-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+  gap: 18px;
+}
