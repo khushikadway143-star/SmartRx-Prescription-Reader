@@ -67,7 +67,7 @@ def recognizer() -> OnnxRecognizer:
     return _recognizer
 
 
-# ------------------------------------------------------------------ models
+# models
 class OcrRequest(BaseModel):
     format: str                      # 'gray8' (raw pre-processed pixels) or 'encoded' (PNG/JPEG bytes)
     data: str                        # base64
@@ -89,7 +89,7 @@ class RecordsIn(BaseModel):
     records: List[RecordIn]
 
 
-# ------------------------------------------------------------------ routes
+#routes
 @app.get("/health")
 def health():
     return {"status": "ok", "model_loaded": os.path.exists(f"{MODEL_DIR}/crnn.onnx"), "time": time.time()}
@@ -119,7 +119,7 @@ def ocr(req: OcrRequest):
 
 @app.post("/v1/records", dependencies=[Depends(auth)])
 def save_records(body: RecordsIn):
-    """Idempotent: re-sending the same record id is ignored, so the phone can safely retry."""
+    "Idempotent: re-sending the same record id is ignored, so the phone can safely retry."
     with db() as c:
         c.executemany(
             "INSERT OR IGNORE INTO records(id, ts, month, type, dose_id, drug, detail) VALUES (?,?,?,?,?,?,?)",
@@ -128,14 +128,14 @@ def save_records(body: RecordsIn):
 
 
 @app.get("/v1/records", dependencies=[Depends(auth)])
-def list_records(month: str = Query(..., pattern=r"^\d{4}-\d{2}$")):
+def list_records(month: str = Query(.., pattern=r"^\d{4}-\d{2}$")):
     with db() as c:
         rows = c.execute("SELECT * FROM records WHERE month = ? ORDER BY ts", (month,)).fetchall()
     return {"month": month, "records": [dict(r) for r in rows]}
 
 
 @app.get("/v1/records/summary", dependencies=[Depends(auth)])
-def summary(month: str = Query(..., pattern=r"^\d{4}-\d{2}$")):
+def summary(month: str = Query(.., pattern=r"^\d{4}-\d{2}$")):
     with db() as c:
         counts = {r["type"]: r["n"] for r in c.execute(
             "SELECT type, COUNT(*) AS n FROM records WHERE month = ? GROUP BY type", (month,))}
